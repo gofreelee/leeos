@@ -164,6 +164,78 @@ push ebx
 mov ebx, [ebp + 8] ; 获取数字
 ; 思路,应该一位一位的打印数字
 
+
+;首先要跳过每一位为0的部分
+JumpZero:
+location_8:
+
+mov eax, ebx
+shr eax, 24
+mov cl, 0x10 ; cl现在是 16
+div cl
+
+cmp al, 0
+jz location_7
+jmp IntDeal_8
+
+location_7:
+mov al, ah
+cmp al, 0
+jz location_6
+jmp IntDeal_7
+
+location_6:
+
+mov eax, ebx
+shr eax, 8
+shl eax, 24
+mov cl, 0x10 ; cl现在是 16
+div cl
+
+cmp al, 0
+jz  location_5
+jmp IntDeal_6
+
+location_5:
+mov al, ah
+cmp al, 0
+jz location_4
+jmp IntDeal_5
+
+location_4:
+mov eax, ebx
+shr eax, 16
+shl eax, 24
+mov cl, 0x10 ; cl现在是 16
+div cl
+
+cmp al, 0
+jz  location_3
+jmp IntDeal_4
+
+location_3:
+
+mov al, ah
+cmp al, 0
+jz location_2
+jmp IntDeal_3
+
+location_2:
+mov eax, ebx
+and eax,0x000000ff
+mov cl, 0x10 ; cl现在是 16
+div cl
+
+cmp al, 0
+jz location_1
+jmp IntDeal_2
+
+location_1:
+mov al, ah
+; 最后一位无论如何也要输出了
+jmp IntDeal_1
+
+
 IntDeal_8:
 ;四个字节,现在处理最高字节的部分
 mov eax, ebx
@@ -175,25 +247,91 @@ div cl ; ax / cl 余数在ah  商在 al
 
 call IntToChar
 
-cmp al, 0
-jz IntDeal_7
+
 push ax
 call putChar
 pop  ax
 
 IntDeal_7:
-shr  eax, 8
-
+mov ah, al
 call IntToChar
 
-cmp al, 0
-jz IntDeal_6
+
 
 push ax
 call putChar
 pop  ax
 
 IntDeal_6:
+mov eax, ebx
+shl eax, 8
+shr eax, 24
+mov cl, 0x10 ; cl现在是 16
+div cl 
+
+call IntToChar
+
+
+
+push ax
+call putChar
+pop  ax
+
+IntDeal_5:
+
+mov al, ah
+
+call IntToChar
+
+push ax
+call putChar
+pop  ax
+
+IntDeal_4:
+mov eax, ebx
+shl eax, 16
+shr eax, 24
+mov cl, 0x10 ; cl现在是 16
+div cl 
+
+call IntToChar
+
+push ax
+call putChar
+pop  ax
+
+IntDeal_3:
+mov  al, ah
+
+call IntToChar
+
+push ax
+call putChar
+pop ax
+
+IntDeal_2:
+
+mov eax, ebx
+
+and eax, 0x000000ff
+mov cl, 0x10 ; cl现在是 16
+div cl 
+
+call IntToChar
+
+push ax
+call putChar
+pop  ax
+
+IntDeal_1:
+
+mov al, ah
+call IntToChar
+
+push ax
+call putChar
+pop  ax
+
 
 
 
@@ -210,9 +348,6 @@ ret
 
 IntToChar:
 ;这是个辅助例程,就是用来 把al的数字处理一下
-isZero:
-cmp al, 0
-jz  back
 
 lessTen:
 cmp al, 0x0a

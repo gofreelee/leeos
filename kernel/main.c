@@ -13,7 +13,9 @@ int main()
     // putChar('\b');
     // putChar('3');
     putStr("kernel\n");
-    putInt(0x02000000);
+    putInt(0x00000000);
+    putChar('\n');
+    putInt(0xffffffff);
     while (1);
     return 0;
 }
