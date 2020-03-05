@@ -1,4 +1,6 @@
 #include "../lib/kernel/print.h"
+#include "init.h"
+
 int main()
 {
     // putChar('k');
@@ -13,9 +15,10 @@ int main()
     // putChar('\b');
     // putChar('3');
     putStr("kernel\n");
-    putInt(0x00000000);
-    putChar('\n');
-    putInt(0xffffffff);
-    while (1);
+    init_all();
+    asm volatile("sti");
+
+    while (1)
+        ;
     return 0;
 }

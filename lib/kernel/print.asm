@@ -50,19 +50,6 @@ jmp OtherChar
 
 
 
-DealLF:
-DealCR:
-;这两个在我们的操作系统中是一个效果
-xor dx, dx
-mov ax, bx
-mov si, 80
-div si ; 除了之后 dx 中为余数
-sub bx, dx
-
-add bx, 80 ; 换行
-cmp bx, 2000
-jl SetCursor
-
 
 DealBackSpace:
 
@@ -86,6 +73,20 @@ inc bx
 jmp SetCursor
 
 
+DealLF:
+DealCR:
+;这两个在我们的操作系统中是一个效果
+xor dx, dx
+mov ax, bx
+mov si, 80
+div si ; 除了之后 dx 中为余数
+sub bx, dx
+
+add bx, 80 ; 换行
+cmp bx, 2000
+jl SetCursor
+
+
 ;滚屏函数
 RollScreen:
 ;复制数据
@@ -103,7 +104,7 @@ clear:
 mov word [gs : ebx],0x0720
 add ebx, 2
 loop clear
-
+mov bx, 1920
 
 SetCursor:
 mov dx, 0x3d4
