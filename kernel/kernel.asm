@@ -1,6 +1,8 @@
 ;中断处理程序
 [bits 32]
 extern putStr ; 引入外部函数
+extern exception_funcptr_table ; 引入异常处理函数指针数组
+
 %define ERROR_CODE nop
 %define ZERO    push 0
 
@@ -18,20 +20,45 @@ section .text
 interrupt%1entry:
 
     %2
-    push interrupt
-    call putStr
-    add esp, 4
+    ;保存一些寄存器
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
 
-    mov al, 0x20
+   
+    mov al, 0x20 ; 发送EOI 给主片和从片
     out 0x20,al
     out 0xa0,al
 
+    push %1
+
+    call [exception_funcptr_table + %1 * 4] ; 调用对应的中断处理函数
     add esp, 4
-    iret
+    jmp exit_intr
+
 section .data
     dd  interrupt%1entry
 
 %endmacro
+
+section .text
+global exit_intr  ; 导出中断退出
+
+exit_intr:
+
+popad
+pop gs
+pop fs
+pop es
+pop ds
+
+add esp, 4
+iretd
+
+
+
 
 interrupt_deal 0x00, ZERO
 interrupt_deal 0x01, ZERO
