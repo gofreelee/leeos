@@ -122,7 +122,6 @@ protect_mode_start:
     ;已经开起了分页
     call init_kernel
     mov esp, 0xc009f000
-    mov byte [gs:160], 'V'
     jmp KERNEL_ENTRY_POINT
 set_page:
     mov ecx , 4096

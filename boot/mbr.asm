@@ -17,16 +17,7 @@ mov dx, 0x184f
 
 int 0x10
 ;上面是清屏
-mov byte [gs:0x00],'1'
-mov byte [gs:0x01],0xA4
-mov byte [gs:0x02],' '
-mov byte [gs:0x03],0xA4
-mov byte [gs:0x04],'M'
-mov byte [gs:0x05],0xA4
-mov byte [gs:0x06],'C'
-mov byte [gs:0x07],0xA4
-mov byte [gs:0x08],'R'
-mov byte [gs:0x09],0xA4
+
 ;从硬盘加载 loader
 mov cx ,4
 mov eax, loader_start_sector
