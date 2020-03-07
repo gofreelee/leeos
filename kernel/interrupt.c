@@ -4,11 +4,15 @@
 #include "global.h"
 #include "io.h"
 #include "../device/timer.h"
+
 #define INT_DESC_NUM 0x21 //目前的中断描述符表的大小
 #define PIC_M_EVEN 0x20
 #define PIC_M_ODD 0x21
 #define PIC_S_EVEN 0xa0
 #define PIC_S_ODD 0xa1
+#define EFLAG_IF_ON 0x00000200 // eflag 寄存器对应的标志位应该被设置为1
+#define GET_EFLAGS(EFLAG) asm volatile("pushfl; pop %0" \
+                                       : "=g"(EFLAG));
 
 struct interrupt_gate_desc
 {
@@ -111,4 +115,41 @@ void idt_init()
                  :
                  : "m"(idt_data_48));
     putStr("idt init done \n");
+}
+
+static enum intr_status get_intr_status()
+{
+    uint32_t eflag;
+    GET_EFLAGS(eflag);
+    return eflag & EFLAG_IF_ON ? INTR_ON : INTR_OFF;
+}
+
+static void set_intr_status(enum intr_status status)
+{
+    if (status)
+        intr_open();
+    else
+        intr_close();
+}
+
+void intr_open()
+{
+    enum intr_status curr_status = get_intr_status();
+    if (curr_status)
+        return;
+    else
+    {
+        asm volatile("sti");
+    }
+}
+
+void intr_close()
+{
+    if (get_intr_status())
+    {
+        asm volatile("cli"
+                     :
+                     :
+                     : "memory");
+    }
 }
