@@ -188,8 +188,8 @@ jmp IntDeal_7
 location_6:
 
 mov eax, ebx
-shr eax, 8
-shl eax, 24
+shl eax, 8
+shr eax, 24
 mov cl, 0x10 ; cl现在是 16
 div cl
 
@@ -205,8 +205,8 @@ jmp IntDeal_5
 
 location_4:
 mov eax, ebx
-shr eax, 16
-shl eax, 24
+shl eax, 16
+shr eax, 24
 mov cl, 0x10 ; cl现在是 16
 div cl
 
@@ -254,7 +254,7 @@ call putChar
 pop  ax
 
 IntDeal_7:
-mov ah, al
+mov al, ah
 call IntToChar
 
 

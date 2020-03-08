@@ -1,5 +1,5 @@
 #include "string.h"
-#include "kernel/debug.h"
+#include "../kernel/debug.h"
 void memset(void *dst, uint8_t value, uint32_t num)
 {
     ASSERT(dst != 0)
@@ -109,9 +109,9 @@ char *strcat(char *dst, const char *src)
 uint32_t strchrs(const char *dst, char ch)
 {
     uint32_t counter = 0;
-    while(*dst != '\0')
+    while (*dst != '\0')
     {
-        if(*dst == ch)
+        if (*dst == ch)
             ++counter;
         ++dst;
     }
