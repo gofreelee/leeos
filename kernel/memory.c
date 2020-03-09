@@ -1,6 +1,8 @@
 #include "memory.h"
 #include "../lib/kernel/print.h"
 #include "../lib/stdint.h"
+#include "debug.h"
+#include "../lib/string.h"
 
 #define PAGE_SIZE 4096 // 一个页的大小为 4KB
 
@@ -78,4 +80,129 @@ void mem_init()
     uint32_t memory_size = *((uint32_t *)(0xb00));
     mem_pool_init(memory_size);
     putStr("mem init done\n");
+}
+
+static void *vaddr_get_pages(enum pool_flags PF, uint32_t page_cnt)
+{
+    uint32_t bitstart = -1, counter = 0, alloced_pages_addr;
+    if (PF == PF_KERNEL)
+    {
+        bitstart = bitmap_scan(&(kernel_vaddr.vaddr_bitmap), page_cnt);
+        if (bitstart == -1)
+        {
+            return 0;
+        }
+        else
+        {
+            while (counter < page_cnt)
+            {
+                bitmap_set(&(kernel_vaddr.vaddr_bitmap), bitstart + counter, 1);
+                ++counter;
+            }
+            alloced_pages_addr = kernel_vaddr.vaddr_start + PAGE_SIZE * bitstart;
+        }
+    }
+    else
+    {
+        /*用户进程分配 */
+    }
+    return (void *)alloced_pages_addr;
+}
+
+static uint32_t *pte_addr(uint32_t ptr)
+{
+    /*该函数的作用是,把ptr(一个地址), 这个地址是属于一个页的,页是由页表的页表项
+    索引得的,然后把这个页表的虚拟地址返回 */
+    uint32_t pte_vaddr = (0xffc00000) |
+                         ((ptr & 0xffc00000) >> 10) |
+                         4 * ((ptr & 0x003ff000) >> 12);
+    return (uint32_t *)pte_vaddr;
+}
+
+static uint32_t *pde_addr(uint32_t ptr)
+{
+    uint32_t pde_vaddr = (0xfffff000 | ((ptr & 0xffc00000) >> 22) * 4);
+    return (uint32_t *)pde_vaddr;
+}
+
+static void *palloc(struct pool *mem_pool)
+{
+    /*在这个内存池中分配一页的内存 */
+    uint32_t bit_index = bitmap_scan(&(mem_pool->pool_bitmap), 1);
+    if (bit_index == -1)
+    {
+        /*分配失败 */
+        return 0;
+    }
+    bitmap_set(&(mem_pool->pool_bitmap), bit_index, 1);
+    uint32_t palloc_addr = mem_pool->phy_start_addr + PAGE_SIZE * bit_index;
+    return (void *)palloc_addr;
+}
+
+static void page_table_add(void *vir_addr, void *phy_addr)
+{
+    /*先把虚拟地址对应的页目录项的指针，页表项的指针 */
+    uint32_t *pte_ptr = pte_addr(vir_addr);
+    uint32_t *pde_ptr = pde_addr(vir_addr);
+
+    /*页目录项存在 */
+    if ((*pde_ptr & 0x00000001))
+    {
+        /*先判断 */
+        ASSERT(!(*pte_ptr & 0x00000001))
+        if (!(*pte_ptr & 0x00000001))
+        {
+            *pte_ptr = ((uint32_t)phy_addr | PG_P_1 | PG_RW_W | PG_US_U);
+        }
+        else
+        {
+            /*页表项已经存在的情况下 */
+        }
+    }
+    /*页目录项不存在 */
+    else
+    {
+        /*分配一个页目录空间 */
+        uint32_t *alloc_pde = (uint32_t *)palloc(&kernel_pool);
+        *pde_ptr = ((uint32_t)alloc_pde | PG_P_1 | PG_RW_W | PG_US_U);
+        memset((void *)((uint32_t)pte_ptr & 0xfffff000), 0, PAGE_SIZE);
+        ASSERT(!(*pte_ptr & 0x00000001))
+        *pte_ptr = ((uint32_t)phy_addr | PG_P_1 | PG_RW_W | PG_US_U);
+    }
+}
+
+void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
+{
+    /*分配虚拟地址和物理地址，并建立它们的映射 */
+    ASSERT(cnt_pages > 0 && cnt_pages < 3896)
+    void *keep_help;
+    void *vir_alloc_addr = vaddr_get_pages(PF, cnt_pages);
+    /*错误判断 */
+    if (vir_alloc_addr == 0)
+        return 0;
+
+    keep_help = vir_alloc_addr;
+    void *phy_alloc_addr;
+    struct pool *mem_pool = PF == PF_KERNEL ? &kernel_pool : &user_pool;
+
+    for (int i = 0; i < cnt_pages; ++i)
+    {
+
+        phy_alloc_addr = palloc(&mem_pool);
+        if (phy_alloc_addr == 0)
+            return 0;
+        page_table_add(vir_alloc_addr, phy_alloc_addr);
+        vir_alloc_addr = (void *)((uint32_t)vir_alloc_addr + PAGE_SIZE);
+    }
+    return keep_help;
+}
+
+void* malloc_kernel_pages(uint32_t cnt)
+{
+    void* vaddr = malloc_page(PF_KERNEL, cnt);
+    if(vaddr != 0)
+    {
+        memset(vaddr,0,PAGE_SIZE * cnt);
+    }
+    return vaddr;
 }
