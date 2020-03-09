@@ -19,6 +19,10 @@ int main()
     mem_init();
     init_all();
     asm volatile("sti");
+    void *addr = malloc_kernel_pages(3);
+    putStr("\n malloc kernel pages start vaddr is");
+    putInt((uint32_t)addr);
+    putChar('\n');
     ASSERT(1 == 2)
     while (1)
         ;

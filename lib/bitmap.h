@@ -1,6 +1,6 @@
 #ifndef BITMAP_H_
 #define BITMAP_H_
-#include "global.h"
+#include "../kernel/global.h"
 #include "../lib/stdint.h"
 #define BIT_MASK 1
 

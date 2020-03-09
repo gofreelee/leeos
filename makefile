@@ -10,7 +10,8 @@ CFLAGS =  -Wall $(LIB) -fno-builtin -c -W -Wstrict-prototypes \
 LDFLAGS = -m elf_i386 -Ttext $(ENTRY_POINT) -e main -o $(BUILD_DIR)/kernel.bin
 
 OBJS = $(BUILD_DIR)/main.o $(BUILD_DIR)/init.o $(BUILD_DIR)/interrupt.o \
-$(BUILD_DIR)/timer.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/print.o $(BUILD_DIR)/debug.o
+$(BUILD_DIR)/timer.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/print.o $(BUILD_DIR)/debug.o $(BUILD_DIR)/memory.o $(BUILD_DIR)/string.o \
+$(BUILD_DIR)/bitmap.o
 
 $(BUILD_DIR)/main.o: kernel/main.c lib/kernel/print.h lib/stdint.h kernel/interrupt.h device/timer.h kernel/debug.h
 	$(CC) $(CFLAGS) -o $@ $< 
@@ -26,6 +27,16 @@ $(BUILD_DIR)/timer.o: device/timer.c device/timer.h lib/stdint.h kernel/io.h lib
 
 $(BUILD_DIR)/debug.o: kernel/debug.c kernel/debug.h lib/kernel/print.h lib/stdint.h kernel/interrupt.h
 	$(CC) $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/memory.o: kernel/memory.c 
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/string.o: lib/string.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/bitmap.o: lib/bitmap.c
+	$(CC) $(CFLAGS) -o $@ $<
+
 
 #下面编译汇编#
 $(BUILD_DIR)/kernel.o: kernel/kernel.asm

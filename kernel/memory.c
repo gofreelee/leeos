@@ -128,13 +128,16 @@ static uint32_t *pde_addr(uint32_t ptr)
 static void *palloc(struct pool *mem_pool)
 {
     /*在这个内存池中分配一页的内存 */
+
     uint32_t bit_index = bitmap_scan(&(mem_pool->pool_bitmap), 1);
     if (bit_index == -1)
     {
         /*分配失败 */
         return 0;
     }
+    //putInt(bit_index);
     bitmap_set(&(mem_pool->pool_bitmap), bit_index, 1);
+
     uint32_t palloc_addr = mem_pool->phy_start_addr + PAGE_SIZE * bit_index;
     return (void *)palloc_addr;
 }
@@ -156,6 +159,7 @@ static void page_table_add(void *vir_addr, void *phy_addr)
         }
         else
         {
+
             /*页表项已经存在的情况下 */
         }
     }
@@ -177,32 +181,37 @@ void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
     ASSERT(cnt_pages > 0 && cnt_pages < 3896)
     void *keep_help;
     void *vir_alloc_addr = vaddr_get_pages(PF, cnt_pages);
+    putChar('\n');
     /*错误判断 */
     if (vir_alloc_addr == 0)
         return 0;
 
     keep_help = vir_alloc_addr;
     void *phy_alloc_addr;
-    struct pool *mem_pool = PF == PF_KERNEL ? &kernel_pool : &user_pool;
+    struct pool *mem_pool = (PF == PF_KERNEL ? &kernel_pool : &user_pool);
 
     for (int i = 0; i < cnt_pages; ++i)
     {
+        //debug 这里
 
-        phy_alloc_addr = palloc(&mem_pool);
+        phy_alloc_addr = palloc(mem_pool);
+        
         if (phy_alloc_addr == 0)
             return 0;
+
         page_table_add(vir_alloc_addr, phy_alloc_addr);
         vir_alloc_addr = (void *)((uint32_t)vir_alloc_addr + PAGE_SIZE);
+
     }
     return keep_help;
 }
 
-void* malloc_kernel_pages(uint32_t cnt)
+void *malloc_kernel_pages(uint32_t cnt)
 {
-    void* vaddr = malloc_page(PF_KERNEL, cnt);
-    if(vaddr != 0)
+    void *vaddr = malloc_pages(PF_KERNEL, cnt);
+    if (vaddr != 0)
     {
-        memset(vaddr,0,PAGE_SIZE * cnt);
+        memset(vaddr, 0, PAGE_SIZE * cnt);
     }
     return vaddr;
 }

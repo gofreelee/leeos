@@ -1,6 +1,7 @@
 #include "bitmap.h"
 #include "../lib/string.h"
 #include "../kernel/debug.h"
+#include "./kernel/print.h"
 void bitmap_init(struct bitmap *btmp)
 {
     memset(btmp->bits, 0, btmp->bitmap_len);
@@ -17,9 +18,12 @@ int bitmap_scan(struct bitmap *btmp, uint32_t cnt)
 {
     // 在bitmap里寻找空闲的,也就是不是为0xff的字节
     uint32_t index = 0;
-    while (index < btmp->bitmap_len && (0xff == btmp->bits[index]))
+    while ((index < btmp->bitmap_len) && (0xff == btmp->bits[index]))
+    {
         ++index;
-    ASSERT(index < btmp->bitmap_len);
+    }
+
+    //ASSERT(index < btmp->bitmap_len);
     if (index == btmp->bitmap_len)
     {
         return -1; // 内存池满了
@@ -34,7 +38,9 @@ int bitmap_scan(struct bitmap *btmp, uint32_t cnt)
     // 要找连续 cnt 个 空闲的位置
     int bit_left = btmp->bitmap_len * 8 - bit_index; // 剩余的bit
     if (cnt == 1)
+    {
         return bit_index;
+    }
     int counter = 1;
     bit_index = bit_index + 1;
     while (bit_left > 0)
@@ -44,7 +50,9 @@ int bitmap_scan(struct bitmap *btmp, uint32_t cnt)
             ++counter;
             ++bit_index;
             if (counter == cnt)
-                return bit_index - (cnt - 1);
+            {
+                return bit_index - cnt;
+            }
         }
         else
         {
@@ -58,14 +66,17 @@ int bitmap_scan(struct bitmap *btmp, uint32_t cnt)
 
 void bitmap_set(struct bitmap *btmp, uint32_t index, uint8_t value)
 {
+    ASSERT(value == 1 || value == 0);
     uint32_t base = index / 8;
     uint32_t offset = index % 8;
     if (value)
     {
-        btmp->bits[base] = btmp->bits[base] | (BIT_MASK << offset);
+        btmp->bits[base] = (btmp->bits[base]) | (BIT_MASK << offset);
     }
     else
     {
-        btmp->bits[base] = btmp->bits[base] & ~(BIT_MASK << offset);
+        btmp->bits[base] = btmp->bits[base] & (~(BIT_MASK << offset));
     }
+   
+
 }

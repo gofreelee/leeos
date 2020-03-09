@@ -25,6 +25,8 @@ struct virtual_addrs
 
 extern struct pool kernel_pool, user_pool;
 void mem_init();
-void *malloc_page(enum pool_flags PF, uint32_t cnt_pages);
+void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages);
 static void *vaddr_get_pages(enum pool_flags PF, uint32_t cnt);
+void *malloc_kernel_pages(uint32_t cnt);
+
 #endif
