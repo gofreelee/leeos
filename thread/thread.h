@@ -1,6 +1,7 @@
 #ifndef THREAD_H_
 #define THREAD_H_
 #include "../lib/stdint.h"
+#include "../lib/kernel/list.h"
 
 /*声明一个名为　thread_func 的类型，　代指一类函数 */
 
@@ -64,9 +65,19 @@ struct pcb_struct
     enum task_status status;
     uint8_t priority; // 线程优先级
     char name[16];
+    uint8_t ticks; // 每次上处理器的时间滴答数
+
+    uint32_t elapsed_ticks; //　总滴答数
+
+    /*在一般的队列里的节点 */
+    struct list_elem general_tag;
+
+    struct list_elem all_list_tag;
+
+    uint32_t *pgdir;
     uint32_t stack_magic; // 魔数，用来检测栈边界
 };
-void thread_start(thread_func func, void *func_args,
-                  const char *name, int prio);
+struct pcb_struct *thread_start(thread_func func, void *func_args,
+                                const char *name, int prio);
 
 #endif
