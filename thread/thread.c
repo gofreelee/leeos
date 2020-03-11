@@ -4,17 +4,28 @@
 #include "../kernel/debug.h"
 #include "../lib/kernel/list.h"
 #include "../kernel/interrupt.h"
+#include "../lib/kernel/print.h"
+#define offset(struct_type, elem_name) \
+    (uint32_t)(&((struct_type *)0)->elem_name)
+
+#define get_pcb(struct_type, elem_name, curr_addr) \
+    (struct_type *)((uint32_t)curr_addr - offset(struct_type, elem_name))
+
 struct list ready_thread_list;
 struct list all_thread_list;
 
 struct pcb_struct *main_thread_pcb_ptr;
 
+struct list_elem *thread_tag; //
+
+extern switch_to(struct pcb_struct *curr, struct pcb_struct *next);
+
 struct pcb_struct *running_thread()
 {
     /*获取正在执行的线程的pcb的地址 */
     uint32_t pcb;
-    asm volatile("mov %%esp, %0"
-                 : "g"(pcb));
+    asm volatile("movl %%esp, %0"
+                 : "=g"(pcb));
     return (pcb & 0xfffff000);
 }
 
@@ -36,7 +47,8 @@ void thread_create(struct pcb_struct *pcb_ptr,
 
 void thread_init(struct pcb_struct *pcb_ptr, int prio, const char *name)
 {
-    memset(pcb_ptr, 0, 4096); //初始化
+    memset(pcb_ptr, 0, sizeof(*pcb_ptr)); //初始化
+
     strcpy(pcb_ptr->name, name);
     if (pcb_ptr == main_thread_pcb_ptr)
     {
@@ -84,6 +96,42 @@ static void make_main_thread()
 {
     main_thread_pcb_ptr = running_thread();
     thread_init(main_thread_pcb_ptr, 31, "main");
+
     ASSERT(!(elem_find(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag))))
     list_append(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag));
+}
+
+void schedule()
+{
+    /*保证中断关了 */
+    ASSERT(get_intr_status() == INTR_OFF)
+    struct pcb_struct *curr = running_thread();
+    if (curr->status == TASK_RUNNING)
+    {
+        /*时间片到了 */
+        ASSERT(!elem_find(&ready_thread_list, &curr->general_tag));
+        curr->ticks = curr->priority;
+        curr->status = TASK_READY;
+        list_append(&ready_thread_list, &(curr->general_tag));
+    }
+    else
+    {
+        /*其他运行态 */
+    }
+    //确保有就绪状态的线程
+    ASSERT(!list_empty(&ready_thread_list))
+    thread_tag = list_pop(&ready_thread_list);
+    struct pcb_struct *next =
+        get_pcb(struct pcb_struct, general_tag, thread_tag);
+    next->status = TASK_RUNNING;
+    switch_to(curr, next);
+}
+
+void system_thread_init()
+{
+    putStr("thread_init start\n");
+    list_init(&all_thread_list);
+    list_init(&ready_thread_list);
+    make_main_thread();
+    putStr("thread_init done\n");
 }

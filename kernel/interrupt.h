@@ -12,7 +12,7 @@ enum intr_status
     INTR_ON
 };
 
-static enum intr_status get_intr_status();
+enum intr_status get_intr_status();
 static void set_intr_status(enum intr_status new_status);
 
 //中断打开
@@ -20,5 +20,5 @@ void intr_open();
 
 //中断关闭
 void intr_close();
-
+void register_handler(uint8_t vec_num, intr_handler func);
 #endif

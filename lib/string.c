@@ -4,8 +4,11 @@ void memset(void *dst, uint8_t value, uint32_t num)
 {
     ASSERT(dst != 0)
     int index = 0;
+
     for (; index < num; ++index)
+    {
         *((uint8_t *)dst + index) = value;
+    }
 }
 
 void memcpy(void *dst, void *src, uint32_t size)

@@ -8,7 +8,7 @@ SELECTOR_VIDEO equ (0x0003 << 3) + TI_GDT + RPL0
 [bits 32]
 section .text
 global putChar ; 导出全局符号
-
+global set_cursor; 导出全局符号给其他程序调用
 putChar:
 push ebp
 mov ebp, esp 
@@ -361,3 +361,30 @@ add al, 87
 
 back:
     ret
+
+;这个函数是为了导出方便写的
+;void set_cursor(uint32t);　
+set_cursor:
+push ebp
+mov ebp, esp
+push ebx
+mov ebx, [ebp + 8]
+
+mov dx, 0x3d4
+mov al, 0x0E
+out dx, al 
+mov dx, 0x3d5
+mov al, bh
+out dx, al
+
+mov dx, 0x3d4
+mov al, 0x0F
+out dx, al
+mov dx, 0x3d5
+mov al, bl
+out dx, al
+
+put_char_done:
+pop ebx
+pop ebp
+ret

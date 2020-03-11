@@ -79,5 +79,10 @@ struct pcb_struct
 };
 struct pcb_struct *thread_start(thread_func func, void *func_args,
                                 const char *name, int prio);
+struct pcb_struct *running_thread();
 
+//调度函数
+void schedule();
+
+void system_thread_init();
 #endif

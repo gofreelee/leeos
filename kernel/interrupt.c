@@ -29,7 +29,7 @@ static struct interrupt_gate_desc idt[INT_DESC_NUM];
 
 //在 kernel.asm 中的中断处理函数的入口数组.
 extern intr_handler interrupt_table[INT_DESC_NUM];
-
+extern void set_cursor(uint32_t cursor);
 //异常处理函数指针数组
 intr_handler exception_funcptr_table[INT_DESC_NUM];
 
@@ -52,9 +52,30 @@ static void general_exception_handler(uint8_t vec_number)
         //对于 会产生伪中断和 保留项,直接返回
         return;
     }
-    putStr("int vector :0x");
-    putInt(vec_number);
-    putChar('\n');
+
+    //光标移动到左上角
+    set_cursor(0);
+    int cursor = 0;
+    while (cursor < 320)
+    {
+        putChar(' ');
+        ++cursor;
+    }
+    set_cursor(0);
+    putStr("!!!!   exception message begin  !!!!\n");
+    set_cursor(88);
+    putStr(exception_names[vec_number]);
+    if (vec_number == 14)
+    {
+        uint32_t page_fault_vaddr = 0;
+        asm volatile("movl %%cr2, %0"
+                     : "=r"(page_fault_vaddr));
+        putStr("\npage fault addr is ");
+        putInt(page_fault_vaddr);
+    }
+    putStr("\n!!!!   exception message end    !!!!\n");
+    while (1)
+        ;
 }
 
 // 异常处理的一些的初始化
@@ -65,6 +86,27 @@ static void exception_init()
         exception_funcptr_table[i] = general_exception_handler;
         exception_names[i] = "No Name";
     }
+    exception_names[0] = "#DF Divide Error";
+    exception_names[1] = "#DB Debug Exception";
+    exception_names[2] = "NMI Interrupt";
+    exception_names[3] = "#BP Breakpoint Exception";
+    exception_names[4] = "#OF Overflow Exception";
+    exception_names[5] = "#BR BOUND Range Exceeded Exception";
+    exception_names[6] = "#UD Invalid Opcode Exception";
+    exception_names[7] = "#NM Device Not Available Exception";
+    exception_names[8] = "#DF Double Fault Exception";
+    exception_names[9] = "Coprocessor Segment Overrun";
+    exception_names[10] = "#TS Invalid TSS Excrption";
+    exception_names[11] = "#NP Segment Not Present";
+    exception_names[12] = "#SS Stack Fault Exception";
+    exception_names[13] = "#GP General Protection Exception";
+    exception_names[14] = "#PF Page-Fault Exception";
+    // intr_name[15] = "";	保留项
+    exception_names[16] = "#MF x87 FPU Floating-Point Error";
+    exception_names[17] = "#AC Alignment Check Exception";
+    exception_names[18] = "#MC Machine-Check Exception";
+    exception_names[19] = "#XF SIMD Floating-Point Exception";
+    exception_names[0x20] = "#clock";
 }
 
 // 中断描述符表的初始化
@@ -117,7 +159,7 @@ void idt_init()
     putStr("idt init done \n");
 }
 
-static enum intr_status get_intr_status()
+enum intr_status get_intr_status()
 {
     uint32_t eflag;
     GET_EFLAGS(eflag);
@@ -152,4 +194,10 @@ void intr_close()
                      :
                      : "memory");
     }
+}
+
+void register_handler(uint8_t vec_num, intr_handler func)
+{
+    /*注册处理中断函数 */
+    exception_funcptr_table[vec_num] = func;
 }

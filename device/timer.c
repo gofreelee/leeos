@@ -1,7 +1,10 @@
-
+#include "../thread/thread.h"
 #include "../kernel/io.h"
 #include "timer.h"
+#include "debug.h"
+#include "../kernel/interrupt.h"
 // 时钟控制寄存器
+uint32_t ticks; // 时钟总滴答数
 static void frequency_set(uint8_t counter_port,
                           uint8_t counter_no, uint8_t rwl,
                           uint8_t counter_mode, uint8_t counter_value)
@@ -14,9 +17,34 @@ static void frequency_set(uint8_t counter_port,
     out_byte(counter_port, (uint8_t)((counter_value) >> 8));
 }
 
-static void timer_init()
+/*时钟中断处理函数 */
+static void intr_timer_handler()
+{
+    /*获取当前线程的pcb */
+    struct pcb_struct *curr_thread = running_thread();
+    // putStr(" enter timer handler :");
+    // putInt((uint32_t)curr_thread);
+    // putChar('\n');
+    /*判断线程的pcb指针是否溢出 */
+    ASSERT(curr_thread->stack_magic == 0x00007c00);
+
+    ++(curr_thread->elapsed_ticks);
+    ++ticks;
+    if (curr_thread->ticks == 0)
+    {
+        schedule();
+    }
+    else
+    {
+        --(curr_thread->ticks);
+    }
+}
+
+void timer_init()
 {
     frequency_set(COUNTER_R0_PORT, COUNTER_RO_NO, READ_WRITE_LATCH,
                   COUNTER_MODE, COUNTER_RO_VALUE);
+    ticks = 0;
+    register_handler(0x20, intr_timer_handler);
     putStr("timer init done\n");
 }
