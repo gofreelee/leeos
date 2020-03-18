@@ -12,7 +12,7 @@ push ebp
 
 mov eax, [esp + 20] ; curr指针
 mov [eax], esp ; 保存下栈的指针
-
+;-------------------------
 mov eax, [esp + 24] ; next指针
 mov esp, [eax] ;新线程的栈指针
 

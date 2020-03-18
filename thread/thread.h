@@ -2,7 +2,11 @@
 #define THREAD_H_
 #include "../lib/stdint.h"
 #include "../lib/kernel/list.h"
+#define offset(struct_type, elem_name) \
+    (uint32_t)(&((struct_type *)0)->elem_name)
 
+#define get_pcb(struct_type, elem_name, curr_addr) \
+    (struct_type *)((uint32_t)curr_addr - offset(struct_type, elem_name))
 /*声明一个名为　thread_func 的类型，　代指一类函数 */
 
 typedef void thread_func(void *);
@@ -54,7 +58,7 @@ struct thread_stack
 
     void (*eip)(thread_func *func, void *func_args);
 
-    void *unuse_addr; // 占位的
+    void (*unuse_addr); // 占位的
     thread_func *function;
     void *function_args;
 };
@@ -85,4 +89,8 @@ struct pcb_struct *running_thread();
 void schedule();
 
 void system_thread_init();
+
+void thread_lock(enum task_status status);
+void thread_unlock(struct pcb_struct* unlock_thread);
+
 #endif
