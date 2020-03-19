@@ -2,7 +2,7 @@
 #include "../kernel/io.h"
 #include "../kernel/interrupt.h"
 #include "../lib/kernel/print.h"
-
+#include "ioqueue.h"
 #define KBD_BUF_PORT 0x60 //键盘buffer寄存器的端口号
 
 /*一些控制字符没有ascii码，并且不能显示，用\xxx表示,或者别的转义 */
@@ -34,6 +34,7 @@
 
 static bool ctrl_status, shift_status, alt_status, caps_lock_status, ext_scancode;
 
+struct ioqueue kdb_buf; // 键盘缓冲区
 /**
  * 以通码make_code为索引的二维数组
  */
@@ -183,8 +184,14 @@ static void intr_keyboard_handler()
             ch = keymap[index][0];
         }
         if (ch)
-            putChar(ch);
-        return;
+        {
+            if (!ioqueue_is_full(&kdb_buf))
+            {
+                putChar(ch);
+                ioq_putchar(&kdb_buf, ch);
+            }
+            return;
+        }
     }
     else
     {
@@ -195,6 +202,7 @@ static void intr_keyboard_handler()
 void keyboard_init()
 {
     putStr("keyboard init \n");
+    ioqueue_init(&kdb_buf);
     register_handler(0x21, intr_keyboard_handler);
     putStr("keyboard init done \n");
 }
