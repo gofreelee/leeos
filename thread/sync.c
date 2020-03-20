@@ -18,7 +18,7 @@ void lock_init(struct lock *plock)
 
 void sem_down(struct semaphore *sem)
 {
-    intr_close();
+    enum task_status old_status = intr_disable();
     while (sem->value == 0)
     {
         if (elem_find(&sem->waiter, &(running_thread()->general_tag)))
@@ -30,12 +30,12 @@ void sem_down(struct semaphore *sem)
     }
     --(sem->value); //
     ASSERT(sem->value == 0)
-    intr_open();
+    intr_set_status(old_status);
 }
 
 void sem_up(struct semaphore *sem)
 {
-    intr_close();
+    enum task_status old_status = intr_disable();
     ASSERT(sem->value == 0)
 
     if (!list_empty(&sem->waiter))
@@ -51,7 +51,7 @@ void sem_up(struct semaphore *sem)
     }
     ++(sem->value);
     ASSERT(sem->value == 1)
-    intr_open();
+    intr_set_status(old_status);
 }
 
 void lock_acquire(struct lock *plock)
@@ -73,7 +73,7 @@ void lock_acquire(struct lock *plock)
 
 void lock_release(struct lock *plock)
 {
-    
+
     ASSERT(plock->holder == running_thread())
     if (plock->holder_repeat_num > 1)
     {
