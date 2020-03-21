@@ -5,14 +5,14 @@
 #include "io.h"
 #include "../device/timer.h"
 
-#define INT_DESC_NUM 0x21 //目前的中断描述符表的大小
+#define INT_DESC_NUM 0x30 //目前的中断描述符表的大小
 #define PIC_M_EVEN 0x20
 #define PIC_M_ODD 0x21
 #define PIC_S_EVEN 0xa0
 #define PIC_S_ODD 0xa1
 #define EFLAG_IF_ON 0x00000200 // eflag 寄存器对应的标志位应该被设置为1
 #define GET_EFLAGS(EFLAG) asm volatile("pushfl; pop %0" \
-                                       : "=g"(EFLAG));
+                                       : "=g"(EFLAG))
 
 struct interrupt_gate_desc
 {
@@ -134,7 +134,7 @@ static void pic_init()
     out_byte(PIC_S_ODD, 0x02);
     out_byte(PIC_S_ODD, 0x01);
 
-    out_byte(PIC_M_ODD, 0xfe);
+    out_byte(PIC_M_ODD, 0xfc); //fd是只开键盘中断
     out_byte(PIC_S_ODD, 0xff);
     putStr("pic init done \n");
 }
@@ -200,4 +200,51 @@ void register_handler(uint8_t vec_num, intr_handler func)
 {
     /*注册处理中断函数 */
     exception_funcptr_table[vec_num] = func;
+}
+
+/*************************************************** */
+/**
+ * 开中断并返回开中断前的状态
+ */
+enum intr_status intr_enable() {
+	enum intr_status old_status;
+	if(INTR_ON == intr_get_status()) {
+		old_status = INTR_ON;
+		return old_status;
+	} else {
+		old_status = INTR_OFF;
+		asm volatile("sti");						// 开中断
+		return old_status;
+	}
+}
+
+/**
+ * 关中断并返回关中断前的状态
+ */
+enum intr_status intr_disable() {
+	enum intr_status old_status;
+	if(INTR_ON == intr_get_status()) {
+		old_status = INTR_ON;
+		asm volatile("cli" : : : "memory");			// 关中断
+		return old_status;
+	} else {
+		old_status = INTR_OFF;
+		return old_status;
+	}
+}
+
+/**
+ * 将中断状态设置为status
+ */
+enum intr_status intr_set_status(enum intr_status status) {
+	return status & INTR_ON ? intr_enable() : intr_disable();
+}
+
+/**
+ * 拿到中断状态
+ */
+enum intr_status intr_get_status() {
+	uint32_t eflags = 0;
+	GET_EFLAGS(eflags);
+	return (EFLAG_IF_ON & eflags) ? INTR_ON : INTR_OFF;
 }

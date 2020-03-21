@@ -3,6 +3,8 @@
 #include "../lib/stdint.h"
 #include "debug.h"
 #include "../lib/string.h"
+#include "../thread/sync.h"
+#include "../thread/thread.h"
 
 #define PAGE_SIZE 4096 // 一个页的大小为 4KB
 
@@ -15,6 +17,7 @@ struct pool
     struct bitmap pool_bitmap;
     uint32_t *phy_start_addr;
     uint32_t mem_size; // 内存池长度
+    struct lock lock;  // 锁
 };
 
 struct pool kernel_pool, user_pool;
@@ -40,12 +43,12 @@ static void mem_pool_init(uint32_t all_mem)
     kernel_pool.phy_start_addr = kernel_pool_start_addr;
     kernel_pool.mem_size = kernel_mem_page * PAGE_SIZE;
     kernel_pool.pool_bitmap.bitmap_len = kernel_mem_page / 8;
-
+    lock_init(&(kernel_pool.lock));
     /*设置用户内存池属性 */
     user_pool.phy_start_addr = user_pool_start_addr;
     user_pool.mem_size = user_mem_page * PAGE_SIZE;
     user_pool.pool_bitmap.bitmap_len = user_mem_page / 8;
-
+    lock_init(&(user_pool.lock));
     kernel_pool.pool_bitmap.bits = (void *)KERNEL_BITMAP_START;
     user_pool.pool_bitmap.bits = (void *)(KERNEL_BITMAP_START + kernel_pool.pool_bitmap.bitmap_len);
 
@@ -105,6 +108,24 @@ static void *vaddr_get_pages(enum pool_flags PF, uint32_t page_cnt)
     else
     {
         /*用户进程分配 */
+        struct pcb_struct *curr = running_thread();
+        bitstart = bitmap_scan(&(curr->userprog_vaddr.vaddr_bitmap), page_cnt);
+        if (bitstart == -1)
+        {
+            return 0;
+        }
+        else
+        {
+            int counter = 0;
+            while (counter < page_cnt)
+            {
+                bitmap_set(&(curr->userprog_vaddr.vaddr_bitmap), bitstart + counter, 1);
+                ++counter;
+            }
+            alloced_pages_addr = curr->userprog_vaddr.vaddr_start + PAGE_SIZE * bitstart;
+            /*(0xc0000000 - PAGE_SIZE) 作为用户３级栈已经在start_process中分配 */
+            ASSERT((uint32_t)alloced_pages_addr < (0xc0000000 - PAGE_SIZE))
+        }
     }
     return (void *)alloced_pages_addr;
 }
@@ -195,13 +216,12 @@ void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
         //debug 这里
 
         phy_alloc_addr = palloc(mem_pool);
-        
+
         if (phy_alloc_addr == 0)
             return 0;
 
         page_table_add(vir_alloc_addr, phy_alloc_addr);
         vir_alloc_addr = (void *)((uint32_t)vir_alloc_addr + PAGE_SIZE);
-
     }
     return keep_help;
 }
@@ -214,4 +234,50 @@ void *malloc_kernel_pages(uint32_t cnt)
         memset(vaddr, 0, PAGE_SIZE * cnt);
     }
     return vaddr;
+}
+
+void *malloc_user_pages(uint32_t cnt)
+{
+    /*分配用户内存 */
+    lock_acquire(&(user_pool.lock));
+    void *vaddr = malloc_pages(PF_USER, cnt);
+    memset(vaddr, 0, cnt);
+    lock_release(&(user_pool.lock));
+    return vaddr;
+}
+
+void *get_a_page(enum pool_flags PF, uint32_t vaddr)
+{
+    struct pool *mem_pool = (PF == PF_KERNEL) ? &kernel_pool : &user_pool;
+    lock_acquire(&(mem_pool->lock));
+    struct pcb_struct *curr = running_thread();
+    int bit_index = -1;
+    if (curr->pgdir != 0 && PF == PF_USER)
+    {
+        /*用户进程分配内存 */
+        bit_index = (vaddr - (uint32_t)curr->userprog_vaddr.vaddr_start) / PAGE_SIZE;
+        ASSERT(bit_index > 0)
+        bitmap_set(&curr->userprog_vaddr.vaddr_bitmap, bit_index, 1);
+    }
+    else if (curr->pgdir == 0 && PF == PF_KERNEL)
+    {
+        bit_index = (vaddr - (uint32_t)kernel_vaddr.vaddr_start) / PAGE_SIZE;
+        ASSERT(bit_index > 0)
+        bitmap_set(&kernel_vaddr.vaddr_bitmap, bit_index, 1);
+    }
+    else
+    {
+        /*报告下错误 */
+    }
+    void *phy_addr = palloc(mem_pool);
+    page_table_add((void *)vaddr, phy_addr);
+    lock_release(&(mem_pool->lock));
+    return (void *)vaddr;
+}
+
+/*由虚拟地址获得对应的物理地址 */
+uint32_t addr_virtual_to_phy(uint32_t vaddr)
+{
+    uint32_t *pte_ptr = pte_addr(vaddr);
+    return ((*pte_ptr) & 0xfffff000) + (vaddr & 0x00000fff);
 }
