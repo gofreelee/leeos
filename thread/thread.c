@@ -5,6 +5,7 @@
 #include "../lib/kernel/list.h"
 #include "../kernel/interrupt.h"
 #include "../lib/kernel/print.h"
+#include "../userprog/process.h"
 
 struct list ready_thread_list;
 struct list all_thread_list;
@@ -102,6 +103,7 @@ static void make_main_thread()
 void schedule()
 {
     /*保证中断关了 */
+
     ASSERT(intr_get_status() == INTR_OFF)
     struct pcb_struct *curr = running_thread();
     if (curr->status == TASK_RUNNING)
@@ -117,6 +119,7 @@ void schedule()
         /*其他运行态 */
     }
     //确保有就绪状态的线程
+
     ASSERT(!list_empty(&ready_thread_list))
     thread_tag = (void *)0;
     thread_tag = list_pop(&ready_thread_list);
@@ -124,9 +127,12 @@ void schedule()
         get_pcb(struct pcb_struct, general_tag, thread_tag);
     next->status = TASK_RUNNING;
     //putStr("\n schedule \n");
+
+    process_activate(next);
+
     switch_to(curr, next);
     //putStr("\n scheduled \n");
-   // return;
+    // return;
 }
 
 void system_thread_init()

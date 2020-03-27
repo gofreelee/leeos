@@ -2,6 +2,7 @@
 #define THREAD_H_
 #include "../lib/stdint.h"
 #include "../lib/kernel/list.h"
+#include "../kernel/memory.h"
 #define offset(struct_type, elem_name) \
     (uint32_t)(&((struct_type *)0)->elem_name)
 
@@ -42,9 +43,12 @@ struct intr_stack
 
     /*特权级发送变化　才压　ss esp */
     uint32_t error_code;
-    uint32_t eflags;
+
     void (*eip)(void);
+    uint32_t eflags;
+
     uint32_t cs;
+
     void *esp;
     uint32_t ss;
 };
@@ -58,7 +62,7 @@ struct thread_stack
 
     void (*eip)(thread_func *func, void *func_args);
 
-    void (*unuse_addr); // 占位的
+    void(*unuse_addr); // 占位的
     thread_func *function;
     void *function_args;
 };
@@ -79,7 +83,8 @@ struct pcb_struct
     struct list_elem all_list_tag;
 
     uint32_t *pgdir;
-    uint32_t stack_magic; // 魔数，用来检测栈边界
+    struct virtual_addrs userprog_vaddr; // 用户进程的虚拟地址池
+    uint32_t stack_magic;                // 魔数，用来检测栈边界
 };
 struct pcb_struct *thread_start(thread_func func, void *func_args,
                                 const char *name, int prio);
@@ -91,6 +96,10 @@ void schedule();
 void system_thread_init();
 
 void thread_lock(enum task_status status);
-void thread_unlock(struct pcb_struct* unlock_thread);
-
+void thread_unlock(struct pcb_struct *unlock_thread);
+void thread_init(struct pcb_struct *pcb_ptr, int prio, char *name);
+void thread_create(struct pcb_struct *pcb_ptr,
+                   thread_func function, void *func_args);
+extern struct list ready_thread_list;
+extern struct list all_thread_list;
 #endif
