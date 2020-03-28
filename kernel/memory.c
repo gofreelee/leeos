@@ -199,10 +199,9 @@ static void page_table_add(void *vir_addr, void *phy_addr)
 void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
 {
     /*分配虚拟地址和物理地址，并建立它们的映射 */
-    ASSERT(cnt_pages > 0 && cnt_pages < 3896)
+    ASSERT(cnt_pages > 0 && cnt_pages < 3840)
     void *keep_help;
     void *vir_alloc_addr = vaddr_get_pages(PF, cnt_pages);
-    putChar('\n');
     /*错误判断 */
     if (vir_alloc_addr == 0)
         return 0;

@@ -8,6 +8,7 @@
 #define PG_RW_W 2
 #define PG_US_U 4
 #define PG_US_S 0
+#define PAGE_SIZE 4096
 
 /*用来区分申请内存的是谁, 内核还是用户进程 */
 enum pool_flags
@@ -28,5 +29,8 @@ void mem_init();
 void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages);
 static void *vaddr_get_pages(enum pool_flags PF, uint32_t cnt);
 void *malloc_kernel_pages(uint32_t cnt);
+uint32_t addr_virtual_to_phy(uint32_t vaddr);
+void *get_a_page(enum pool_flags PF, uint32_t vaddr);
+void *malloc_user_pages(uint32_t cnt);
 
 #endif
