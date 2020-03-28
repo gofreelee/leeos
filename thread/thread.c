@@ -6,13 +6,14 @@
 #include "../kernel/interrupt.h"
 #include "../lib/kernel/print.h"
 #include "../userprog/process.h"
-
+#include "sync.h"
 struct list ready_thread_list;
 struct list all_thread_list;
-
+struct lock pid_lock; // 线程号锁
 struct pcb_struct *main_thread_pcb_ptr;
-
 struct list_elem *thread_tag; //
+
+static pid_t next_pid = 0;
 
 extern void switch_to(struct pcb_struct *curr, struct pcb_struct *next);
 
@@ -59,7 +60,7 @@ void thread_init(struct pcb_struct *pcb_ptr, int prio, char *name)
     {
         pcb_ptr->status = TASK_READY;
     }
-
+    pcb_ptr->pid = allocate_next_pid();
     pcb_ptr->priority = prio;
     pcb_ptr->elapsed_ticks = 0;
     pcb_ptr->ticks = prio;
@@ -94,7 +95,7 @@ struct pcb_struct *thread_start(thread_func func, void *func_args,
 static void make_main_thread()
 {
     main_thread_pcb_ptr = running_thread();
-    thread_init(main_thread_pcb_ptr, 31, "main");
+    thread_init(main_thread_pcb_ptr, 31, "main"); 
 
     ASSERT(!(elem_find(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag))))
     list_append(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag));
@@ -140,6 +141,7 @@ void system_thread_init()
     putStr("thread_init start\n");
     list_init(&all_thread_list);
     list_init(&ready_thread_list);
+    lock_init(&pid_lock);
     make_main_thread();
     putStr("thread_init done\n");
 }
@@ -174,4 +176,12 @@ void thread_unlock(struct pcb_struct *unlock_thread)
         list_push(&ready_thread_list, &(unlock_thread->general_tag));
     }
     intr_set_status(old_status);
+}
+
+pid_t allocate_next_pid()
+{
+    lock_acquire(&pid_lock);
+    next_pid++;
+    lock_release(&pid_lock);
+    return next_pid;
 }

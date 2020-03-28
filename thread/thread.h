@@ -11,6 +11,7 @@
 /*声明一个名为　thread_func 的类型，　代指一类函数 */
 
 typedef void thread_func(void *);
+typedef uint16_t pid_t;
 
 /*线程/进程的状态 */
 enum task_status
@@ -45,9 +46,9 @@ struct intr_stack
     uint32_t error_code;
 
     void (*eip)(void);
-    uint32_t eflags;
 
     uint32_t cs;
+    uint32_t eflags;
 
     void *esp;
     uint32_t ss;
@@ -72,6 +73,7 @@ struct pcb_struct
     uint32_t *self_kernel_stack; //内核栈的指针
     enum task_status status;
     uint8_t priority; // 线程优先级
+    pid_t pid;        // 线程号
     char name[16];
     uint8_t ticks; // 每次上处理器的时间滴答数
 
@@ -100,6 +102,7 @@ void thread_unlock(struct pcb_struct *unlock_thread);
 void thread_init(struct pcb_struct *pcb_ptr, int prio, char *name);
 void thread_create(struct pcb_struct *pcb_ptr,
                    thread_func function, void *func_args);
+pid_t allocate_next_pid(); // 获取下一个pid　
 extern struct list ready_thread_list;
 extern struct list all_thread_list;
 #endif
