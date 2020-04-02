@@ -5,6 +5,8 @@
 #include "../lib/string.h"
 #include "../thread/sync.h"
 #include "../thread/thread.h"
+#include "../userprog/process.h"
+#include "interrupt.h"
 
 #define PAGE_SIZE 4096 // 一个页的大小为 4KB
 
@@ -20,6 +22,7 @@ struct pool
     struct lock lock;  // 锁
 };
 
+struct mem_block_desc k_mem_block_descs[MEM_BLOCK_DES_INT]; //内存块描述符数组
 struct pool kernel_pool, user_pool;
 struct virtual_addrs kernel_vaddr;
 
@@ -82,6 +85,7 @@ void mem_init()
     putStr("mem init start\n");
     uint32_t memory_size = *((uint32_t *)(0xb00));
     mem_pool_init(memory_size);
+    block_des_init(k_mem_block_descs);
     putStr("mem init done\n");
 }
 
@@ -279,4 +283,130 @@ uint32_t addr_virtual_to_phy(uint32_t vaddr)
 {
     uint32_t *pte_ptr = pte_addr(vaddr);
     return ((*pte_ptr) & 0xfffff000) + (vaddr & 0x00000fff);
+}
+
+void block_des_init(struct mem_block_desc *mem_block_descs)
+{
+    uint32_t index = 0;
+    uint32_t capacity = 16;
+    for (; index < 7; ++index)
+    {
+        mem_block_descs[index].block_size = capacity;
+        mem_block_descs[index].blocks_per_arena =
+            (PAGE_SIZE - sizeof(struct arena)) / capacity;
+        list_init(&mem_block_descs[index].free_list);
+        capacity *= 2;
+    }
+}
+
+/*返回arena中对应的index的mem_block所在的地址 */
+static struct mem_block *arena_to_block(struct arena *arena_ptr, uint32_t index)
+{
+    return (struct mem_block *)((uint32_t)arena_ptr +
+                                sizeof(struct arena) +
+                                index * (arena_ptr->mem_desc_addr->block_size));
+}
+
+/*返回内存块所在的arena地址*/
+static struct arena *block_to_arena(struct mem_block *block)
+{
+    return (struct arena *)((uint32_t)block & 0xfffff000);
+}
+
+void *sys_malloc(uint32_t size)
+{
+    enum pool_flags PF;
+    struct pcb_struct *curr_process = running_thread();
+    struct pool *mem_pool;
+    struct arena *new_arena;
+    struct mem_block_desc *mem_desc_set; // 内存块描述符指针　实际上当数组用
+    //根据页目录
+    if (curr_process->pgdir == 0)
+    {
+        PF = PF_KERNEL;
+        mem_pool = &kernel_pool;
+        mem_desc_set = k_mem_block_descs;
+    }
+    else
+    {
+        PF = PF_USER;
+        mem_pool = &user_pool;
+        mem_desc_set = curr_process->u_mem_block_desc;
+    }
+
+    lock_acquire(&mem_pool->lock);
+    if (size > 1024)
+    {
+        uint32_t cnt = DIV_ROUND_UP(size, PAGE_SIZE); // 向上取整,求页框数量
+        new_arena = malloc_pages(PF, cnt);
+        if (new_arena == 0)
+        {
+            lock_release(&mem_pool->lock);
+            return 0;
+        }
+        else
+        {
+            memset(new_arena, 0, cnt * PAGE_SIZE);
+            new_arena->large = true;
+            new_arena->mem_desc_addr = 0;
+            new_arena->cnt = cnt;
+            lock_release(&mem_pool->lock);
+            return (void *)(new_arena + 1);
+        }
+    }
+    else
+    {
+
+        uint32_t des_idx = 0;
+        for (; des_idx < 7; ++des_idx)
+        {
+            if (size <= mem_desc_set[des_idx].block_size)
+                break;
+        }
+        struct mem_block_desc *used_block_desc = &mem_desc_set[des_idx];
+        // putInt(used_block_desc->block_size);
+        // putChar('\n');
+        // putInt(used_block_desc->blocks_per_arena);
+        if (list_empty(&used_block_desc->free_list))
+        {
+            /*重新分配一块内存，拆成mem_block */
+            struct arena *mem_arena = (struct arena *)malloc_pages(PF, 1);
+
+            if (mem_arena == 0)
+            {
+                lock_release(&mem_pool->lock);
+                return 0;
+            }
+            memset(mem_arena, 0, PAGE_SIZE);
+
+            mem_arena->mem_desc_addr = used_block_desc;
+            mem_arena->large = false;
+            mem_arena->cnt = used_block_desc->blocks_per_arena;
+
+            struct mem_block *divide_mem;
+            enum intr_status status = intr_disable();
+            // putInt(mem_arena);
+            // putChar('\n');
+            for (int i = 0; i < mem_arena->cnt; ++i)
+            {
+                divide_mem = arena_to_block(mem_arena, i);
+                ASSERT(!elem_find(&used_block_desc->free_list, &divide_mem->free_elem));
+                // putInt(divide_mem);
+                // putChar('\n');
+                list_append(&(used_block_desc->free_list), &(divide_mem->free_elem));
+            }
+
+            intr_set_status(status);
+        }
+
+        /*pop出一块数据来*/
+        struct list_elem *pop_elem = list_pop(&used_block_desc->free_list);
+        ASSERT(pop_elem != 0)
+        struct mem_block *mem_elem = get_pcb(struct mem_block, free_elem, pop_elem); //get_pcb 是用来根据结构体的成员名字和它的地址来推出结构体的起始地址
+        struct arena *mem_elem_arena = block_to_arena(mem_elem);
+        mem_elem_arena->cnt--;
+        memset(mem_elem, 0, used_block_desc->block_size); //初始化
+        lock_release(&mem_pool->lock);
+        return (void *)mem_elem;
+    }
 }
