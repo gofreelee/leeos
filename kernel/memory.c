@@ -95,6 +95,7 @@ static void *vaddr_get_pages(enum pool_flags PF, uint32_t page_cnt)
     if (PF == PF_KERNEL)
     {
         bitstart = bitmap_scan(&(kernel_vaddr.vaddr_bitmap), page_cnt);
+
         if (bitstart == -1)
         {
             return 0;
@@ -106,7 +107,13 @@ static void *vaddr_get_pages(enum pool_flags PF, uint32_t page_cnt)
                 bitmap_set(&(kernel_vaddr.vaddr_bitmap), bitstart + counter, 1);
                 ++counter;
             }
-            alloced_pages_addr = kernel_vaddr.vaddr_start + PAGE_SIZE * bitstart;
+            alloced_pages_addr = (uint32_t)kernel_vaddr.vaddr_start + PAGE_SIZE * bitstart;
+            // putInt(bitstart);
+            // putChar('\n');
+            // putInt(alloced_pages_addr);
+            // putChar('\n');
+            // putInt((uint32_t)kernel_vaddr.vaddr_start + 4096);
+            // putChar('\n');
         }
     }
     else
@@ -163,7 +170,7 @@ static void *palloc(struct pool *mem_pool)
     //putInt(bit_index);
     bitmap_set(&(mem_pool->pool_bitmap), bit_index, 1);
 
-    uint32_t palloc_addr = mem_pool->phy_start_addr + PAGE_SIZE * bit_index;
+    uint32_t palloc_addr = (uint32_t)mem_pool->phy_start_addr + PAGE_SIZE * bit_index;
     return (void *)palloc_addr;
 }
 
@@ -211,7 +218,7 @@ void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
         return 0;
 
     keep_help = vir_alloc_addr;
-    void *phy_alloc_addr;
+    void *phy_alloc_addr, *phy_help;
     struct pool *mem_pool = (PF == PF_KERNEL ? &kernel_pool : &user_pool);
 
     for (int i = 0; i < cnt_pages; ++i)
@@ -219,13 +226,20 @@ void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages)
         //debug 这里
 
         phy_alloc_addr = palloc(mem_pool);
-
         if (phy_alloc_addr == 0)
             return 0;
+        // if (i == 0)
+        //     phy_help = phy_alloc_addr;
+        // putStr("palloc : ");
+        // putInt(phy_alloc_addr);
+        // putStr(" \n");
 
         page_table_add(vir_alloc_addr, phy_alloc_addr);
         vir_alloc_addr = (void *)((uint32_t)vir_alloc_addr + PAGE_SIZE);
     }
+    // putStr("palloc : ");
+    // putInt(phy_help);
+    // putStr(" \n");
     return keep_help;
 }
 
@@ -338,6 +352,7 @@ void *sys_malloc(uint32_t size)
     if (size > 1024)
     {
         uint32_t cnt = DIV_ROUND_UP(size, PAGE_SIZE); // 向上取整,求页框数量
+
         new_arena = malloc_pages(PF, cnt);
         if (new_arena == 0)
         {
@@ -346,12 +361,15 @@ void *sys_malloc(uint32_t size)
         }
         else
         {
-            memset(new_arena, 0, cnt * PAGE_SIZE);
+            // putInt(size);
+            // putStr(" |");
+            memset(new_arena, 0, cnt * PAGE_SIZE); // memset有问题
             new_arena->large = true;
             new_arena->mem_desc_addr = 0;
             new_arena->cnt = cnt;
+
             lock_release(&mem_pool->lock);
-            return (void *)(new_arena + 1);
+            return (void *)((uint32_t)new_arena + sizeof(struct arena));
         }
     }
     else
@@ -409,4 +427,148 @@ void *sys_malloc(uint32_t size)
         lock_release(&mem_pool->lock);
         return (void *)mem_elem;
     }
+}
+
+/**/
+static void pfree(uint32_t phy_addr)
+{
+    uint32_t pool_idx;
+    if (phy_addr > user_pool.phy_start_addr)
+    {
+        pool_idx = (phy_addr - (uint32_t)user_pool.phy_start_addr) / PAGE_SIZE;
+        bitmap_set(&user_pool.pool_bitmap, pool_idx, 0);
+    }
+    else
+    {
+        pool_idx = (phy_addr - (uint32_t)kernel_pool.phy_start_addr) / PAGE_SIZE;
+        bitmap_set(&kernel_pool.pool_bitmap, pool_idx, 0);
+    }
+    return;
+}
+
+/*把虚拟地址归还给虚拟地址池 */
+static void vaddr_remove_pages(enum pool_flags PF, uint32_t cnt_pages, uint32_t vaddr)
+{
+    struct virtual_addrs *vir_addrs;
+    uint32_t vaddr_idx, counter = 0;
+    if (PF == PF_KERNEL)
+    {
+        vir_addrs = &kernel_vaddr;
+        vaddr_idx = (vaddr - (uint32_t)vir_addrs->vaddr_start) / PAGE_SIZE;
+    }
+    else
+    {
+        struct pcb_struct *curr_process = running_thread();
+        vir_addrs = &curr_process->userprog_vaddr;
+        vaddr_idx = (vaddr - (uint32_t)vir_addrs->vaddr_start) / PAGE_SIZE;
+    }
+    while (counter < cnt_pages)
+    {
+        bitmap_set(&vir_addrs->vaddr_bitmap, vaddr_idx + counter, 0);
+        ++counter;
+    }
+}
+
+static void page_table_pte_remove(uint32_t vir_addr)
+{
+    uint32_t *pte = pte_addr(vir_addr);
+    *pte = (*pte) & ~PG_P_1;
+    asm volatile("invlpg %0"
+                 :
+                 : "m"(vir_addr)
+                 : "memory");
+}
+
+void free_pages(enum pool_flags PF, uint32_t cnt_pages, void *_vaddr)
+{
+    uint32_t vaddr = (uint32_t)_vaddr, counter = 0;
+    // putInt(cnt_pages);
+    // putStr(" ");
+    // putInt(vaddr);
+    // putStr("\n");
+    ASSERT(cnt_pages >= 1 && vaddr % PAGE_SIZE == 0)
+    uint32_t phy_addr = addr_virtual_to_phy(vaddr);
+    ASSERT((phy_addr % PAGE_SIZE) == 0 && phy_addr >= 0x102000)
+    if (phy_addr > user_pool.phy_start_addr)
+    {
+        /*用户进程的内存*/
+        while (counter < cnt_pages)
+        {
+            ASSERT((phy_addr % PAGE_SIZE) == 0 && phy_addr >= user_pool.phy_start_addr)
+            pfree(phy_addr);
+            page_table_pte_remove(vaddr);
+            vaddr += PAGE_SIZE;
+            phy_addr = addr_virtual_to_phy(vaddr);
+            ++counter;
+        }
+        vaddr_remove_pages(PF, cnt_pages, (uint32_t)_vaddr);
+    }
+    else
+    {
+        /*内核内存池*/
+        while (counter < cnt_pages)
+        {
+            ASSERT((phy_addr % PAGE_SIZE) == 0 && phy_addr < user_pool.phy_start_addr && phy_addr >= kernel_pool.phy_start_addr)
+            pfree(phy_addr);
+            page_table_pte_remove(vaddr);
+            vaddr += PAGE_SIZE;
+            phy_addr = addr_virtual_to_phy(vaddr);
+            ++counter;
+        }
+        vaddr_remove_pages(PF, cnt_pages, (uint32_t)_vaddr);
+    }
+}
+
+void sys_free(void *ptr)
+{
+    enum pool_flags PF;
+    struct pool *mem_pool;
+    if (running_thread()->pgdir == 0)
+    {
+        /*内核 */
+        PF = PF_KERNEL;
+        mem_pool = &kernel_pool;
+    }
+    else
+    {
+        /*用户进程*/
+        PF = PF_USER;
+        mem_pool = &user_pool;
+    }
+    lock_acquire(&mem_pool->lock);
+    struct arena *mem_arena = block_to_arena((struct mem_block *)ptr);
+    // putInt(mem_arena);
+    // putStr(" ");
+    // putStr("|");
+    // putInt(mem_arena->mem_desc_addr);
+    // putStr("|");
+    // putStr("debug :  ");
+    // putInt(mem_arena->cnt);
+    // putStr(" :\n");
+    if (mem_arena->mem_desc_addr == 0)
+    {
+        /*大内存直接回收*/
+
+        free_pages(PF, mem_arena->cnt, mem_arena);
+    }
+    else
+    {
+        struct mem_block *block = (struct mem_block *)ptr;
+        list_append(&mem_arena->mem_desc_addr->free_list, &block->free_elem);
+        mem_arena->cnt = mem_arena->cnt + 1;
+        if (mem_arena->cnt == mem_arena->mem_desc_addr->blocks_per_arena)
+        {
+            //要进行释放
+
+            for (int block_idx = 0; block_idx < mem_arena->mem_desc_addr->blocks_per_arena; ++block_idx)
+            {
+                block = arena_to_block(mem_arena, block_idx);
+                ASSERT(elem_find(&mem_arena->mem_desc_addr->free_list,
+                                 &block->free_elem))
+                list_remove(&(block->free_elem));
+            }
+            free_pages(PF, 1, mem_arena);
+        }
+    }
+    lock_release(&mem_pool->lock);
 }

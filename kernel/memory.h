@@ -54,8 +54,14 @@ void *malloc_pages(enum pool_flags PF, uint32_t cnt_pages);
 static void *vaddr_get_pages(enum pool_flags PF, uint32_t cnt);
 void *malloc_kernel_pages(uint32_t cnt);
 uint32_t addr_virtual_to_phy(uint32_t vaddr);
+static void *palloc(struct pool *mem_pool); // 分配物理内存
 void *get_a_page(enum pool_flags PF, uint32_t vaddr);
 void *malloc_user_pages(uint32_t cnt);
 void block_des_init(struct mem_block_desc *mem_block_descs);
 void *sys_malloc(uint32_t size);
+static void pfree(uint32_t phy_addr); // 把phy_addr对应的内存归还
+static void vaddr_remove_pages(enum pool_flags PF, uint32_t cnt_pages, uint32_t vaddr);
+static void page_table_pte_remove(uint32_t vir_addr);                  //把vir_addr所在的pte的P位设置为０
+void free_pages(enum pool_flags PF, uint32_t cnt_pages, void *_vaddr); // 对应着malloc_pages
+void sys_free(void *ptr);
 #endif
