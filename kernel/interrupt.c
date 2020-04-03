@@ -5,7 +5,7 @@
 #include "io.h"
 #include "../device/timer.h"
 
-#define INT_DESC_NUM 0x30 //目前的中断描述符表的大小
+#define INT_DESC_NUM 0x81 //目前的中断描述符表的大小
 #define PIC_M_EVEN 0x20
 #define PIC_M_ODD 0x21
 #define PIC_S_EVEN 0xa0
@@ -13,7 +13,7 @@
 #define EFLAG_IF_ON 0x00000200 // eflag 寄存器对应的标志位应该被设置为1
 #define GET_EFLAGS(EFLAG) asm volatile("pushfl; pop %0" \
                                        : "=g"(EFLAG))
-
+extern uint32_t system_call_handler();
 struct interrupt_gate_desc
 {
     //该结构体是中断门描述符
@@ -112,10 +112,12 @@ static void exception_init()
 // 中断描述符表的初始化
 static void idt_desc_init()
 {
+    int system_call_index = INT_DESC_NUM - 1;
     for (int i = 0; i < INT_DESC_NUM; ++i)
     {
         set_inerrupt_gate_desc(&idt[i], IDT_DESC_ATTR_DPL0, interrupt_table[i]);
     }
+    set_inerrupt_gate_desc(&idt[system_call_index], IDT_DESC_ATTR_DPL3, system_call_handler);
     putStr("idt init done!\n");
 }
 
@@ -206,45 +208,58 @@ void register_handler(uint8_t vec_num, intr_handler func)
 /**
  * 开中断并返回开中断前的状态
  */
-enum intr_status intr_enable() {
-	enum intr_status old_status;
-	if(INTR_ON == intr_get_status()) {
-		old_status = INTR_ON;
-		return old_status;
-	} else {
-		old_status = INTR_OFF;
-		asm volatile("sti");						// 开中断
-		return old_status;
-	}
+enum intr_status intr_enable()
+{
+    enum intr_status old_status;
+    if (INTR_ON == intr_get_status())
+    {
+        old_status = INTR_ON;
+        return old_status;
+    }
+    else
+    {
+        old_status = INTR_OFF;
+        asm volatile("sti"); // 开中断
+        return old_status;
+    }
 }
 
 /**
  * 关中断并返回关中断前的状态
  */
-enum intr_status intr_disable() {
-	enum intr_status old_status;
-	if(INTR_ON == intr_get_status()) {
-		old_status = INTR_ON;
-		asm volatile("cli" : : : "memory");			// 关中断
-		return old_status;
-	} else {
-		old_status = INTR_OFF;
-		return old_status;
-	}
+enum intr_status intr_disable()
+{
+    enum intr_status old_status;
+    if (INTR_ON == intr_get_status())
+    {
+        old_status = INTR_ON;
+        asm volatile("cli"
+                     :
+                     :
+                     : "memory"); // 关中断
+        return old_status;
+    }
+    else
+    {
+        old_status = INTR_OFF;
+        return old_status;
+    }
 }
 
 /**
  * 将中断状态设置为status
  */
-enum intr_status intr_set_status(enum intr_status status) {
-	return status & INTR_ON ? intr_enable() : intr_disable();
+enum intr_status intr_set_status(enum intr_status status)
+{
+    return status & INTR_ON ? intr_enable() : intr_disable();
 }
 
 /**
  * 拿到中断状态
  */
-enum intr_status intr_get_status() {
-	uint32_t eflags = 0;
-	GET_EFLAGS(eflags);
-	return (EFLAG_IF_ON & eflags) ? INTR_ON : INTR_OFF;
+enum intr_status intr_get_status()
+{
+    uint32_t eflags = 0;
+    GET_EFLAGS(eflags);
+    return (EFLAG_IF_ON & eflags) ? INTR_ON : INTR_OFF;
 }
