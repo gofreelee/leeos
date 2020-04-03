@@ -25,5 +25,7 @@ void syscall_table_init()
     putStr("syscall table init start \n");
     syscall_table[SYS_GETPID] = sys_get_pid;
     syscall_table[SYS_WRITE] = sys_write;
+    syscall_table[SYS_MALLOC] = sys_malloc;
+    syscall_table[SYS_FREE] = sys_free;
     putStr("syscall table init end \n");
 }

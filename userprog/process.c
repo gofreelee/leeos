@@ -108,10 +108,14 @@ void process_execute(void *filename, char *name)
 
     process->pgdir = create_page_dir();
 
+    block_des_init(process->u_mem_block_desc);
+
     enum intr_status old_status = intr_disable();
+
     ASSERT(!elem_find(&ready_thread_list, &(process->general_tag)));
     list_append(&ready_thread_list, &(process->general_tag));
     ASSERT(!elem_find(&all_thread_list, &(process->all_list_tag)));
     list_append(&all_thread_list, &(process->all_list_tag));
+
     intr_set_status(old_status);
 }

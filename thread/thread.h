@@ -86,7 +86,8 @@ struct pcb_struct
 
     uint32_t *pgdir;
     struct virtual_addrs userprog_vaddr; // 用户进程的虚拟地址池
-    uint32_t stack_magic;                // 魔数，用来检测栈边界
+    struct mem_block_desc u_mem_block_desc[MEM_BLOCK_DES_INT];//用户进程的内存块描述符数组
+    uint32_t stack_magic; // 魔数，用来检测栈边界
 };
 struct pcb_struct *thread_start(thread_func func, void *func_args,
                                 const char *name, int prio);
