@@ -16,5 +16,7 @@ static void frequency_set(uint8_t counter_port,
                           uint8_t counter_mode, uint8_t counter_value);
 
 void timer_init();
+void mtime_sleep(uint32_t m_seconds);
+static void ticks_to_sleep(uint32_t sleep_ticks);
 
 #endif

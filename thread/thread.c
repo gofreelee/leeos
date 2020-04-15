@@ -13,6 +13,8 @@ struct lock pid_lock; // 线程号锁
 struct pcb_struct *main_thread_pcb_ptr;
 struct list_elem *thread_tag; //
 
+static struct pcb_struct *idle_thread;
+
 static pid_t next_pid = 0;
 
 extern void switch_to(struct pcb_struct *curr, struct pcb_struct *next);
@@ -65,6 +67,13 @@ void thread_init(struct pcb_struct *pcb_ptr, int prio, char *name)
     pcb_ptr->elapsed_ticks = 0;
     pcb_ptr->ticks = prio;
     pcb_ptr->pgdir = 0;
+    pcb_ptr->fd_table[0] = 0;
+    pcb_ptr->fd_table[1] = 1;
+    pcb_ptr->fd_table[2] = 2;
+    for (int i = 3; i < MAX_FILES_OPEN_PER_PROC; ++i)
+    {
+        pcb_ptr->fd_table[i] = -1;
+    }
     pcb_ptr->stack_magic = 0x00007c00; // 魔数
     pcb_ptr->self_kernel_stack = (uint32_t *)((uint32_t)pcb_ptr + 4096);
 }
@@ -95,7 +104,7 @@ struct pcb_struct *thread_start(thread_func func, void *func_args,
 static void make_main_thread()
 {
     main_thread_pcb_ptr = running_thread();
-    thread_init(main_thread_pcb_ptr, 31, "main"); 
+    thread_init(main_thread_pcb_ptr, 31, "main");
 
     ASSERT(!(elem_find(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag))))
     list_append(&all_thread_list, &(main_thread_pcb_ptr->all_list_tag));
@@ -120,7 +129,10 @@ void schedule()
         /*其他运行态 */
     }
     //确保有就绪状态的线程
-
+    if (list_empty(&ready_thread_list))
+    {
+        thread_unlock(idle_thread);
+    }
     ASSERT(!list_empty(&ready_thread_list))
     thread_tag = (void *)0;
     thread_tag = list_pop(&ready_thread_list);
@@ -143,6 +155,7 @@ void system_thread_init()
     list_init(&ready_thread_list);
     lock_init(&pid_lock);
     make_main_thread();
+    idle_thread = thread_start(idle, 0, "idle", 10);
     putStr("thread_init done\n");
 }
 
@@ -184,4 +197,25 @@ pid_t allocate_next_pid()
     next_pid++;
     lock_release(&pid_lock);
     return next_pid;
+}
+
+static void idle(void *arg UNUSED)
+{
+    while (1)
+    {
+        thread_lock(TASK_BLOCKED);
+        asm volatile("sti;hlt" ::
+                         : "memory");
+    }
+}
+
+void thread_yield()
+{
+    struct pcb_struct *curr_thread = running_thread();
+    enum intr_status old_status = intr_disable();
+    ASSERT(!elem_find(&ready_thread_list, curr_thread));
+    list_append(&ready_thread_list, &curr_thread->general_tag);
+    curr_thread->status = TASK_READY;
+    schedule();
+    intr_set_status(old_status);
 }

@@ -1,390 +1,280 @@
 TI_GDT equ 0
-RPL0   equ 0
-CR_ASCII equ 0x0d
-LF_ASCII equ 0x0a
-BackSpace_ASCII equ 0x08
-SELECTOR_VIDEO equ (0x0003 << 3) + TI_GDT + RPL0
+RPLO equ 0
+SELECTOR_VIDEO equ (0x0003 << 3) + TI_GDT + RPLO
+
+section .data
+put_int_buffer dq 0		; 定义8字节缓冲区用于数字到字符的转换
 
 [bits 32]
 section .text
-global putChar ; 导出全局符号
-global set_cursor; 导出全局符号给其他程序调用
-putChar:
-push ebp
-mov ebp, esp 
-; 备份所有的32位寄存器
-pushad
 
-;安装视频段的段选择子到 gs 寄存器
-mov ax, SELECTOR_VIDEO
-mov gs, ax 
-;  获取光标
-mov dx, 0x3d4
-mov al, 0x0E
-out dx, al ; 设置索引,使其指向光标寄存器, 0x0E 是高8位
-mov dx, 0x3d5
-in al, dx
-mov ah, al
+global cls_screen
+cls_screen:
+	pushad
+	;;;;;;;;;;;;;;;
+	; 由于用户程序的cpl为3,显存段的dpl为0,故用于显存段的选择子gs在低于自己特权的环境中为0,
+	; 导致用户程序再次进入中断后,gs为0,故直接在put_str中每次都为gs赋值. 
+	mov ax, SELECTOR_VIDEO	; 不能直接把立即数送入gs,须由ax中转
+	mov gs, ax
 
-mov dx, 0x3d4
-mov al, 0x0F
-out dx, al
-mov dx, 0x3d5
-in al, dx
+	mov ebx, 0
+	mov ecx, 80*25
+.cls:
+	mov word [gs:ebx], 0x0720	;0x0720是黑底白字的空格键
+	add ebx, 2
+	loop .cls 
+	mov ebx, 0
 
-;把ax 中的光标
-mov bx, ax
-mov ecx, [ebp + 8] ; 获取 字符参数 也就是 字符的ascii, 1字节 存储在cl
+.set_cursor:				;直接把set_cursor搬过来用,省事
+;;;;;;; 1 先设置高8位 ;;;;;;;;
+	mov dx, 0x03d4			;索引寄存器
+	mov al, 0x0e			;用于提供光标位置的高8位
+	out dx, al
+	mov dx, 0x03d5			;通过读写数据端口0x3d5来获得或设置光标位置 
+	mov al, bh
+	out dx, al
 
-; 当字符是 LF(换行符), CR(回车符), backSpace(退格键)
+;;;;;;; 2 再设置低8位 ;;;;;;;;;
+	mov dx, 0x03d4
+	mov al, 0x0f
+	out dx, al
+	mov dx, 0x03d5 
+	mov al, bl
+	out dx, al
+	popad
+	ret
 
-cmp cl, LF_ASCII
-jz DealLF
-
-cmp cl, CR_ASCII
-jz DealCR
-
-cmp cl, BackSpace_ASCII
-jz DealBackSpace
-jmp OtherChar
-
-
-
-
-DealBackSpace:
-
-dec bx ;光标退格
-shl bx, 1
-mov byte [gs: bx], 0x20 ; 用空格覆盖
-inc bx
-mov byte [gs: bx], 0x07
-shr bx, 1
-jmp SetCursor
-
-
-OtherChar:
-
-shl bx, 1
-mov [gs: bx], cl
-inc bx
-mov byte [gs: bx], 0x07
-shr bx, 1
-inc bx
-jmp SetCursor
-
-
-DealLF:
-DealCR:
-;这两个在我们的操作系统中是一个效果
-xor dx, dx
-mov ax, bx
-mov si, 80
-div si ; 除了之后 dx 中为余数
-sub bx, dx
-
-add bx, 80 ; 换行
-cmp bx, 2000
-jl SetCursor
-
-
-;滚屏函数
-RollScreen:
-;复制数据
-cld
-xor ecx, ecx
-mov ecx, 960
-mov edi, 0xc00b8000
-mov esi, 0xc00b80a0
-rep movsd
-
-;把最后一行全用空格替代
-mov ecx, 80
-mov ebx, 3840
-clear:
-mov word [gs : ebx],0x0720
-add ebx, 2
-loop clear
-mov bx, 1920
-
-SetCursor:
-mov dx, 0x3d4
-mov al, 0x0E
-out dx, al 
-mov dx, 0x3d5
-mov al, bh
-out dx, al
-
-mov dx, 0x3d4
-mov al, 0x0F
-out dx, al
-mov dx, 0x3d5
-mov al, bl
-out dx, al
-
-PutCharDone:
-popad
-pop ebp
-ret
-
-;字符串打印函数
-global putStr
-;字符串传参是传的地址
-putStr:
-push ebp
-mov ebp, esp
-push eax
-push esi
-mov esi, [ebp + 8] ; 字符串地址
-
-PutStrLoop:
-mov al, [esi]
-cmp al, 0
-jz PutStrDone
-
-push eax
-call putChar
-add esp,4
-inc esi
-jmp PutStrLoop
-
-PutStrDone:
-pop esi
-pop eax
-pop ebp
-ret
-
-;打印数字函数 putInt(uint32 num)
+;---------------------put_int----------------------
+; 将小端数字打印到屏幕上, 打印16进制的(不带0x)
+;---------------------------------------------------
 global putInt
 putInt:
-push ebp
-mov ebp, esp
-push eax
-push edx
-push ecx
-push ebx
-mov ebx, [ebp + 8] ; 获取数字
-; 思路,应该一位一位的打印数字
+	pushad			; 备份所有寄存器
+	mov ebp, esp
+	mov eax, [ebp + 4 * 9]		; call的返回地址占4字节, pushad指令的8 * 4字节
+	mov edx, eax		
+	mov edi, 7		; 指定put_int_buffer中的偏移量
+	mov ecx, 8		; 32位数字中, 十六进制数字的位数是8个
+	mov ebx, put_int_buffer
+
+; 每4位是1位十六进制数字
+.16based_4bits:
+	and edx, 0x0000000f			; 保留最后4位数, and是与操作
+
+	cmp edx, 9					; 判断是0~9还是a~f
+	jg .is_A2F
+	add edx, '0'				; ASCII码是8位大小, add求和后, 只有低8位有效
+	jmp .store
+
+.is_A2F:
+	sub edx, 10					; 减去10再加上'A'的值, 就是对应的ASCII值
+	add edx, 'A'				; 例如: 0xf - 10 = 5 + 'A' == 'F'
+
+; 反序, 变成大端存储, 符合人的认知
+.store:
+	mov [ebx + edi], dl
+	dec edi
+	shr eax, 4					; 当最后4位处理完了, 右移4位
+	mov edx, eax
+	loop .16based_4bits
+
+; 此时put_int_buffer中全是字符, 把高位连续的字符去掉
+.ready_to_print:
+	inc edi						; 此时edi已经为-1(循环了8次, 7 - 8 == 01), 使其++
+.skip_prefix_0:
+	cmp edi, 8					; 若已经比较到第9个字符了, 打印字符全部为0
+
+	je .full0					; 有道理
+
+.go_on_skip:
+	mov cl, [put_int_buffer + edi]
+	inc edi
+	cmp cl, '0'
+	je .skip_prefix_0		; 判断下一位字符是否为字符0
+	dec edi
+	jmp .put_each_num
+
+.full0:
+	mov cl, '0'				; 输入的数字全为0时, 打印0
+
+.put_each_num:
+	push ecx				; cl为可打印的字符
+	call putChar
+	add esp, 4
+	inc edi
+	mov cl, [put_int_buffer + edi]
+	cmp edi, 8
+	jl .put_each_num
+	popad
+	ret
+
+;---------------------put_str----------------------
+; 通过调用putChar来打印以0结尾的字符串
+;---------------------------------------------------
+global putStr
+putStr:
+	push ebx		; 只用到ebx, ecx两个寄存器, 就只备份这两个
+	push ecx
+
+	xor ecx, ecx
+	mov ebx, [esp + 12]	; 从栈中拿到字符串
+
+.goon:
+	mov cl, [ebx]
+	cmp cl, 0			; 判断是否结束
+	jz .str_over
+	push ecx			; 为putChar传递参数
+	call putChar
+	add esp, 4			; 回收参数所占的栈空间
+	inc ebx				; 指向下一个字符
+	jmp .goon
+
+.str_over:
+	pop ecx
+	pop ebx
+	ret
+
+;---------------------putChar----------------------
+; 把栈中的一个字符写入光标所在处
+;---------------------------------------------------
+global putChar
+putChar:
+	pushad			; 备份32位寄存器环境
+	mov ax, SELECTOR_VIDEO
+	mov gs, ax
 
 
-;首先要跳过每一位为0的部分
-JumpZero:
-location_8:
-
-mov eax, ebx
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl
-
-cmp al, 0
-jz location_7
-jmp IntDeal_8
-
-location_7:
-mov al, ah
-cmp al, 0
-jz location_6
-jmp IntDeal_7
-
-location_6:
-
-mov eax, ebx
-shl eax, 8
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl
-
-cmp al, 0
-jz  location_5
-jmp IntDeal_6
-
-location_5:
-mov al, ah
-cmp al, 0
-jz location_4
-jmp IntDeal_5
-
-location_4:
-mov eax, ebx
-shl eax, 16
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl
-
-cmp al, 0
-jz  location_3
-jmp IntDeal_4
-
-location_3:
-
-mov al, ah
-cmp al, 0
-jz location_2
-jmp IntDeal_3
-
-location_2:
-mov eax, ebx
-and eax,0x000000ff
-mov cl, 0x10 ; cl现在是 16
-div cl
-
-cmp al, 0
-jz location_1
-jmp IntDeal_2
-
-location_1:
-mov al, ah
-; 最后一位无论如何也要输出了
-jmp IntDeal_1
+	; 获取当前光标位置
+	mov dx, 0x03d4		; 索引寄存器
+	mov al, 0x0e		; 提供光标的高8位
+	out dx, al
+	mov dx, 0x03d5		; 读写该端口获取或设置光标位置
+	in al, dx			; 得到光标高8位
+	mov ah, al
 
 
-IntDeal_8:
-;四个字节,现在处理最高字节的部分
-mov eax, ebx
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl ; ax / cl 余数在ah  商在 al
-;商 和余数 分别打印
-;0x???????? 8位(这里的位不是1比特, 而是十六进制的)
+	; 再得到低8位
+	mov dx, 0x03d4
+	mov al, 0x0f
+	out dx, al
+	mov dx, 0x03d5
+	in al, dx
 
-call IntToChar
+	; 将光标存入bx
+	mov bx, ax
+
+	; 拿到待打印的字符
+	mov ecx, [esp + 36]		; pushad压入4 * 8 == 32字节
+							; 加上主调函数的返回地址, 故esp + 36
+	cmp cl, 0xd			; CR是0x0d, LF是0x0a
+	jz .is_carriage_return
+	cmp cl, 0xa
+	jz .is_line_feed
+
+	cmp cl, 0x8			; BS(backspace)的ascii码是8
+	jz .is_backspace
+	jmp .put_other
+
+.is_backspace:
+	; 看书上P280
+	dec bx
+	shl bx, 1
+
+	mov byte [gs:bx], 0x20
+	inc bx
+	mov byte [gs:bx], 0x07
+	shr bx, 1
+	jmp .set_cursor
+
+.put_other:
+	shl bx, 1
+
+	mov [gs: bx], cl
+	inc bx
+	mov byte [gs:bx], 0x07
+	shr bx, 1
+	inc bx
+	cmp bx, 2000			; 超出2000个字符了
+	jl .set_cursor
 
 
-push ax
-call putChar
-pop  ax
+.is_line_feed:			; \n
+.is_carriage_return:	; \r	将光标移到行首即可
 
-IntDeal_7:
-mov al, ah
-call IntToChar
+	xor dx, dx
+	mov ax, bx
+	mov ax, bx
+	mov si, 80
 
+	div si
+	sub bx, dx
 
-
-push ax
-call putChar
-pop  ax
-
-IntDeal_6:
-mov eax, ebx
-shl eax, 8
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl 
-
-call IntToChar
-
-
-
-push ax
-call putChar
-pop  ax
-
-IntDeal_5:
-
-mov al, ah
-
-call IntToChar
-
-push ax
-call putChar
-pop  ax
-
-IntDeal_4:
-mov eax, ebx
-shl eax, 16
-shr eax, 24
-mov cl, 0x10 ; cl现在是 16
-div cl 
-
-call IntToChar
-
-push ax
-call putChar
-pop  ax
-
-IntDeal_3:
-mov  al, ah
-
-call IntToChar
-
-push ax
-call putChar
-pop ax
-
-IntDeal_2:
-
-mov eax, ebx
-
-and eax, 0x000000ff
-mov cl, 0x10 ; cl现在是 16
-div cl 
-
-call IntToChar
-
-push ax
-call putChar
-pop  ax
-
-IntDeal_1:
-
-mov al, ah
-call IntToChar
-
-push ax
-call putChar
-pop  ax
+.is_carriage_return_end:		; 回车符CR处理结束
+	add bx, 80
+	cmp bx, 2000
+.is_line_feed_end:				; 若是LF, 将光标 + 80即可
+	jl .set_cursor
 
 
 
+; 屏幕范围是0~24, 滚屏原理就是将1~24行搬运到0~23, 覆盖第0行, 就空了第24行
+.roll_screen:
+	cld				; 清除方向位
+	mov ecx, 960	; 一次搬运4字节, 共960次
+
+	mov esi, 0xc00b80a0		; 第一行行首
+	mov edi, 0xc00b8000		; 第零行行首
+	rep movsd
+
+	; 将最后一行填充空白
+	mov ebx, 3840
+	mov ecx, 80
+
+.cls:
+	mov word [gs:ebx], 0x0720	; 黑底白字的空格键
+	add ebx, 2
+	loop .cls
+	mov bx, 1920				; 将光标重置为1920
+
+.set_cursor:
+; 设置光标位置
+	mov dx, 0x03d4
+	mov al, 0x0e
+	out dx, al
+	mov dx, 0x03d5
+	mov al, bh
+	out dx, al
+
+	mov dx, 0x03d4
+	mov al, 0x0f
+	out dx, al
+	mov dx, 0x03d5
+	mov al, bl
+	out dx, al
+
+.putChar_done:
+	popad
+	ret
 
 
-
-pop ebx
-pop ecx
-pop edx
-pop eax
-
-pop ebp
-
-ret
-
-IntToChar:
-;这是个辅助例程,就是用来 把al的数字处理一下
-
-lessTen:
-cmp al, 0x0a
-jge moreTen
-add al, 48
-jmp back
-
-moreTen:
-add al, 87
-
-back:
-    ret
-
-;这个函数是为了导出方便写的
-;void set_cursor(uint32t);　
+global set_cursor
 set_cursor:
-push ebp
-mov ebp, esp
-push ebx
-mov ebx, [ebp + 8]
+   pushad
+   mov bx, [esp+36]
+;;;;;;; 1 先设置高8位 ;;;;;;;;
+   mov dx, 0x03d4			  ;索引寄存器
+   mov al, 0x0e				  ;用于提供光标位置的高8位
+   out dx, al
+   mov dx, 0x03d5			  ;通过读写数据端口0x3d5来获得或设置光标位置 
+   mov al, bh
+   out dx, al
 
-mov dx, 0x3d4
-mov al, 0x0E
-out dx, al 
-mov dx, 0x3d5
-mov al, bh
-out dx, al
-
-mov dx, 0x3d4
-mov al, 0x0F
-out dx, al
-mov dx, 0x3d5
-mov al, bl
-out dx, al
-
-put_char_done:
-pop ebx
-pop ebp
-ret
+;;;;;;; 2 再设置低8位 ;;;;;;;;;
+   mov dx, 0x03d4
+   mov al, 0x0f
+   out dx, al
+   mov dx, 0x03d5 
+   mov al, bl
+   out dx, al
+   popad
+   ret

@@ -102,5 +102,6 @@ struct gdt_desc
 #define EFLAGS_IOPL_3 (3 << 12)
 #define EFLAGS_IOPL_0 (0 << 12)
 
+#define UNUSED __attribute__ ((unused))
 
 #endif

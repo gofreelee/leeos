@@ -1,10 +1,11 @@
 #ifndef IO_H_
 #define IO_H_
 #include "../lib/stdint.h"
+#include "../lib/kernel/print.h"
 static inline void out_byte(uint16_t port, uint8_t data)
 {
     //该函数是用来向指定端口写入数据的
-    asm volatile("out %b0, %w1" ::"a"(data), "Nd"(port)); // Nd?
+    asm volatile("outb %b0, %w1" ::"a"(data), "Nd"(port)); // Nd?
 }
 static inline void out_multibyte(uint16_t port, const void *addr, uint32_t count)
 {
@@ -25,7 +26,7 @@ static inline uint8_t in_byte(uint16_t port)
 
 static inline void in_multibyte(uint16_t port, const void *addr, uint32_t count)
 {
-    asm volatile("cld, rep insw"
+    asm volatile("cld;rep insw"
                  : "+D"(addr), "+c"(count)
                  : "Nd"(port)
                  : "memory");

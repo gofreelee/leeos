@@ -23,17 +23,16 @@ int main()
 
     putStr("kernel\n");
     init_all();
-    asm volatile("sti");
 
-    process_execute(u_prog_a, "user_a");
-    process_execute(u_prog_b, "user_b");
+    // process_execute(u_prog_a, "user_a");
+    // process_execute(u_prog_b, "user_b");
 
     // console_put_str("main thread: 0x");
     // console_put_int(sys_get_pid());
     // console_putChar('\n');
 
-    thread_start(thread1, "thread1 ", "thread1 ", 31);
-    thread_start(thread2, "thread2 ", "thread2 ", 31);
+    // thread_start(thread1, "thread1 ", "thread1 ", 31);
+    // thread_start(thread2, "thread2 ", "thread2 ", 31);
     while (1)
         ;
 

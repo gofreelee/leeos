@@ -3,6 +3,8 @@
 #include "timer.h"
 #include "debug.h"
 #include "../kernel/interrupt.h"
+#define DIV_ROUND_UP(X, STEP) (X + STEP - 1) / STEP
+
 // 时钟控制寄存器
 uint32_t ticks; // 时钟总滴答数
 static void frequency_set(uint8_t counter_port,
@@ -47,4 +49,21 @@ void timer_init()
     ticks = 0;
     register_handler(0x20, intr_timer_handler);
     putStr("timer init done\n");
+}
+
+static void ticks_to_sleep(uint32_t sleep_ticks)
+{
+    uint32_t start_ticks = ticks;
+    while ((ticks - start_ticks) > sleep_ticks)
+    {
+        thread_yield();
+    }
+}
+
+void mtime_sleep(uint32_t m_seconds)
+{
+    uint32_t frequency = 1000 / IRQ0_FREQUENCY; // 一次中断多少毫秒
+    ASSERT(frequency >= 0)
+    uint32_t ticks = DIV_ROUND_UP(m_seconds, frequency);
+    ticks_to_sleep(ticks);
 }

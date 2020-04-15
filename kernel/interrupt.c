@@ -64,6 +64,7 @@ static void general_exception_handler(uint8_t vec_number)
     set_cursor(0);
     putStr("!!!!   exception message begin  !!!!\n");
     set_cursor(88);
+    putInt(vec_number);
     putStr(exception_names[vec_number]);
     if (vec_number == 14)
     {
@@ -84,7 +85,8 @@ static void exception_init()
     for (int i = 0; i < INT_DESC_NUM; ++i)
     {
         exception_funcptr_table[i] = general_exception_handler;
-        exception_names[i] = "No Name";
+        exception_names[i] = "name";
+        
     }
     exception_names[0] = "#DF Divide Error";
     exception_names[1] = "#DB Debug Exception";
@@ -136,8 +138,8 @@ static void pic_init()
     out_byte(PIC_S_ODD, 0x02);
     out_byte(PIC_S_ODD, 0x01);
 
-    out_byte(PIC_M_ODD, 0xfc); //fd是只开键盘中断
-    out_byte(PIC_S_ODD, 0xff);
+    out_byte(PIC_M_ODD, 0xf8); //IRQ2用于级联从片，否则无法响应从片的中断
+    out_byte(PIC_S_ODD, 0xbf); // 打开从片的IRQ14,用于接受硬盘控制器的中断
     putStr("pic init done \n");
 }
 

@@ -78,6 +78,7 @@ struct list_elem *list_traveral(struct list *plist, call_back_func func, int arg
     if (list_empty(plist))
         return 0;
     struct list_elem *help_elem = plist->head.next;
+    
     while (help_elem != &(plist->tail))
     {
         if (func(help_elem, arg))
@@ -88,3 +89,11 @@ struct list_elem *list_traveral(struct list *plist, call_back_func func, int arg
     }
     return 0;
 }
+
+
+
+
+
+
+
+

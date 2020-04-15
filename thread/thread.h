@@ -8,6 +8,8 @@
 
 #define get_pcb(struct_type, elem_name, curr_addr) \
     (struct_type *)((uint32_t)curr_addr - offset(struct_type, elem_name))
+#define MAX_FILES_OPEN_PER_PROC 8
+
 /*声明一个名为　thread_func 的类型，　代指一类函数 */
 
 typedef void thread_func(void *);
@@ -79,15 +81,16 @@ struct pcb_struct
 
     uint32_t elapsed_ticks; //　总滴答数
 
+    int32_t fd_table[MAX_FILES_OPEN_PER_PROC];
     /*在一般的队列里的节点 */
     struct list_elem general_tag;
 
     struct list_elem all_list_tag;
 
     uint32_t *pgdir;
-    struct virtual_addrs userprog_vaddr; // 用户进程的虚拟地址池
-    struct mem_block_desc u_mem_block_desc[MEM_BLOCK_DES_INT];//用户进程的内存块描述符数组
-    uint32_t stack_magic; // 魔数，用来检测栈边界
+    struct virtual_addrs userprog_vaddr;                       // 用户进程的虚拟地址池
+    struct mem_block_desc u_mem_block_desc[MEM_BLOCK_DES_INT]; //用户进程的内存块描述符数组
+    uint32_t stack_magic;                                      // 魔数，用来检测栈边界
 };
 struct pcb_struct *thread_start(thread_func func, void *func_args,
                                 const char *name, int prio);
@@ -104,6 +107,8 @@ void thread_init(struct pcb_struct *pcb_ptr, int prio, char *name);
 void thread_create(struct pcb_struct *pcb_ptr,
                    thread_func function, void *func_args);
 pid_t allocate_next_pid(); // 获取下一个pid　
+void thread_yield();
+static void idle(void *UNUSED);
 extern struct list ready_thread_list;
 extern struct list all_thread_list;
 #endif
